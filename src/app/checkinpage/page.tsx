@@ -35,7 +35,8 @@ export default function CheckInPage() {
   const [shift, setShift] = useState<'pagi' | 'malam'>('pagi');
   const [todayDate, setTodayDate] = useState(new Date().toISOString().split('T')[0]);
   const [todayDateWib, setTodayDateWib] = useState(getTodayWIB());
-  
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [canCheckIn, setCanCheckIn] = useState(true);
 
@@ -106,7 +107,6 @@ export default function CheckInPage() {
 
   useEffect(() => { fetchLocation(); }, []);
 
-  // Menambahkan detik agar user bisa memantau waktu dengan tepat
   const formattedTime = currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const formattedDate = currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -133,11 +133,65 @@ export default function CheckInPage() {
       setCanCheckIn(!data);
     };
     checkAttendance();
-  }, [todayDate, shift, userId]);
+  }, [todayDate, shift, userId, todayDateWib]);
 
-  // --- HANDLE CHECK-IN REVISI ---
+  // --- Handler Foto ---
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('File harus berupa gambar.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran foto maksimal 5 MB.');
+      return;
+    }
+
+    setPhotoFile(file);
+
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setPhotoPreview(previewUrl);
+  };
+
+  // --- Fungsi Upload Foto ke Supabase Storage ---
+  const uploadAttendancePhoto = async (
+    file: File,
+    uid: string,
+    currentShift: string
+  ) => {
+    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const filePath = `${uid}/${todayDateWib}/${currentShift}-checkin-${Date.now()}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('attendance-photos')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('attendance-photos')
+      .getPublicUrl(filePath);
+
+    return publicUrlData.publicUrl;
+  };
+
+  // --- HANDLE CHECK-IN UTAMA ---
   const handleCheckIn = async () => {
     if (!location) return toast.error('Lokasi belum terdeteksi.');
+    if (!photoFile) return toast.error('Silakan ambil atau unggah foto absen terlebih dahulu.');
 
     const isValidLocation =
       (distance && distance <= OFFICE_LOCATION.radius_m) &&
@@ -159,39 +213,40 @@ export default function CheckInPage() {
       const now = new Date();
       let lockTime = '08:00:00'; 
 
-      // Logika Kunci Jam
       if (shift === 'pagi') {
         if (userPos.includes('SATPAM')) {
-          lockTime = '07:05:00'; // Satpam Pagi: 7.00 + 5 mnt
+          lockTime = '07:05:00';
         } else if (userPos.includes('CS')) {
-          lockTime = '07:30:00'; // CS: 6.30 + 1 jam
+          lockTime = '07:30:00';
         } else {
-          lockTime = '08:00:00'; // Umum: 7.00 + 1 jam
+          lockTime = '08:00:00';
         }
       } else {
         if (userPos.includes('SATPAM')) {
-          lockTime = '18:05:00'; // Satpam Malam: 18.00 + 5 mnt
+          lockTime = '18:05:00';
         } else {
-          lockTime = '19:00:00'; // Malam Lainnya: 18.00 + 1 jam
+          lockTime = '19:00:00';
         }
       }
 
       const shiftStart = new Date(todayDateWib + 'T' + lockTime);
       const statusAbsen = now > shiftStart ? 'Terlambat' : 'Hadir';
 
-      // Tambah notifikasi jika terlambat
       const lateMinutes = Math.max(0, Math.floor((now.getTime() - shiftStart.getTime()) / 60000));
-        if (statusAbsen === 'Terlambat') {
-          const confirmLate = window.confirm(
-            `Anda terlambat ${lateMinutes} menit. Tetap lanjutkan?`
-          );
-
-          if (!confirmLate) {
-            setIsSubmitting(false);
-            return;
-          }
+      if (statusAbsen === 'Terlambat') {
+        const confirmLate = window.confirm(
+          `Anda terlambat ${lateMinutes} menit. Tetap lanjutkan?`
+        );
+        if (!confirmLate) {
+          setIsSubmitting(false);
+          return;
         }
+      }
 
+      // 1. Upload Foto Terlebih Dahulu
+      const photoUrl = await uploadAttendancePhoto(photoFile, userId, shift);
+
+      // 2. Insert Data ke Tabel Attendances
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendances')
         .insert([{
@@ -208,17 +263,19 @@ export default function CheckInPage() {
           check_in_latitude: location.lat,
           check_in_longitude: location.lon,
           check_in_distance_m: distance,
+          check_in_photo: photoUrl, // URL Foto masuk ke database
         }])
         .select('id')
         .single();
 
       if (attendanceError) throw attendanceError;
-// ================= RANDOM VERIFIKASI 5% PER MINGGU =================
-      const startYear = new Date(now.getFullYear(), 0, 1)
-      const days = Math.floor((now.getTime() - startYear.getTime()) / 86400000)
-      const weekNumber = Math.ceil((days + startYear.getDay() + 1) / 7)
-      // 5% sampling mingguan
-      const randomVerify = ((attendanceData.id + weekNumber) % 100) < 5
+
+      // 3. Insert Logbook
+      const startYear = new Date(now.getFullYear(), 0, 1);
+      const days = Math.floor((now.getTime() - startYear.getTime()) / 86400000);
+      const weekNumber = Math.ceil((days + startYear.getDay() + 1) / 7);
+      const randomVerify = ((attendanceData.id + weekNumber) % 100) < 5;
+
       await supabase.from('logbooks').insert([{
         user_id: userId,
         attendance_id: attendanceData.id,
@@ -284,6 +341,29 @@ export default function CheckInPage() {
           <button onClick={fetchLocation} className="mt-3 bg-blue-900 text-white text-sm py-2 px-3 rounded-lg">
             Ambil Ulang Lokasi
           </button>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl shadow-md border mb-5">
+          <p className="font-semibold text-gray-700 mb-2">Foto Absensi</p>
+          <p className="text-sm text-gray-500 mb-3">Silakan ambil foto selfie sebelum melakukan absen masuk.</p>
+          <input
+            type="file"
+            accept="image/*"
+            capture="user"
+            onChange={handlePhotoChange}
+            className="w-full border p-2 rounded-lg text-sm"
+          />
+
+          {photoPreview && (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-gray-600 mb-2">Preview Foto:</p>
+              <img
+                src={photoPreview}
+                alt="Preview foto absensi"
+                className="w-full max-h-80 object-cover rounded-lg border"
+              />
+            </div>
+          )}
         </div>
 
         <button

@@ -123,8 +123,8 @@ export default function DetailAbsensiPegawaiPage() {
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, position')
-        .neq('role', 'admin')
-        .neq('is_admin', true)
+        //.neq('role', 'admin')
+        //.neq('is_admin', true)
         .order('full_name')
       
       if (data) setProfiles(data)
@@ -634,124 +634,108 @@ export default function DetailAbsensiPegawaiPage() {
             <p className="text-gray-500">Memuat data absensi...</p>
         </div>
       ) : dailyRecords.length === 0 ? (
-        <div className="py-20 text-center text-gray-500 border rounded-xl bg-white shadow-sm">
-            <Search className="w-10 h-10 mx-auto text-gray-300 mb-2"/>
+        <div className="py-20 text-center bg-white rounded-xl shadow-sm border mt-6 text-gray-500">
             <p>Tidak ada data untuk ditampilkan pada periode ini.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs md:text-sm">
-                    <thead className="bg-slate-800 text-white">
-                        <tr>
-                            <th className="p-4 font-semibold w-28">Tanggal</th>
-                            <th className="p-4 font-semibold">Nama Pegawai</th>
-                            <th className="p-4 font-semibold w-24">Status</th>
-                            <th className="p-4 font-semibold w-24">Shift</th>
-                            <th className="p-4 font-semibold border-l border-slate-700 text-center">Masuk</th>
-                            <th className="p-4 font-semibold border-l border-slate-700 text-center">Pulang</th>
-                            <th className="p-4 font-semibold border-l border-slate-700 text-center">Aksi</th>
-                        </tr>
-                    </thead> 
-                    <tbody className="divide-y divide-gray-100">
-                        {dailyRecords.map((rec, idx) => (
-                            <tr key={`${rec.profileId}-${idx}`} className={`hover:bg-gray-50 transition-colors ${rec.color}`}>
-                                <td className="p-4 whitespace-nowrap align-top">
-                                    <div className="font-bold text-gray-800">{format(rec.date, 'dd MMM yyyy', { locale: idLocale })}</div>
-                                    <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">{rec.dayName}</div>
-                                </td>
-                                <td className="p-4 align-top font-medium text-gray-900">{rec.profileName} 
-                                    <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
-                                        {rec.profilePosition}</div>
-                                </td>
-                                <td className="p-4 align-top">
-                                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm block w-fit
-                                        ${rec.statusCode.includes('H') || rec.statusCode === '2x' ? 'bg-green-100 text-green-700 border-green-200' : 
-                                          rec.statusCode.includes('T') ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                                          rec.statusCode === 'A' ? 'bg-red-100 text-red-700 border-red-200' : 
-                                          rec.statusCode === 'C' || rec.statusCode === 'S' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                          rec.statusCode === 'I' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                                          'bg-white text-gray-500 border-gray-200'}
-                                    `}>
-                                        {rec.statusCode}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400 mt-1 block">{rec.status}</span>
-                                </td>
+        <div className="overflow-x-auto bg-white rounded-xl shadow-sm border mt-6">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 text-gray-700 text-sm font-semibold uppercase border-b">
+                <th className="p-4">Nama Pegawai</th>
+                <th className="p-4">Hari, Tanggal</th>
+                <th className="p-4">Waktu Tagging</th>
+                <th className="p-4">Wilayah</th>
+                <th className="p-4 min-w-[300px]">Lokasi Geotagging</th>
+              </tr>
+            </thead>
+            <tbody>
+                {dailyRecords.map((record, index) => {
+                  if (!record.shifts || record.shifts.length === 0) return null;
 
-                                <td colSpan={4} className="p-0 align-top">
-                                    {rec.shifts.length > 0 ? (
-                                        <div className="divide-y divide-gray-100">
-                                            {rec.shifts.map((s, i) => (
-                                                <div key={i} className="grid grid-cols-4 border-b last:border-b-0">
-                                                    <div className="p-3 text-gray-500 font-medium text-xs col-span-1">{s.shiftName}</div>
-                                                    <div className="p-4 bg-gray-50/80 border-l border-gray-100 col-span-1 text-center">
-                                                        <div className="font-mono text-base font-extrabold text-slate-800">
-                                                         Pukul :  {s.checkIn ? format(new Date(s.checkIn), 'HH:mm') : '-'} WIB
-                                                        </div>
-                                                        <div className="line-clamp-1">
-                                                            {s.checkInPhoto && (
-                                                                <button
-                                                                    onClick={() => setPreviewImage(s.checkInPhoto)}
-                                                                    className="mt-2 flex items-center justify-center mx-auto text-blue-600 hover:text-blue-800"
-                                                                    title="Lihat Foto Check In"
-                                                                >
-                                                                    <ImageIcon className="w-5 h-5" />
-                                                                </button>
-                                                                )}
-                                                            Jarak : {formatDistance(s.checkInDistanceM)}</div>
-                                                        <div className="line-clamp">{s.checkInLocation || '-'}</div>
-                                                        {s.isLate && (
-                                                            <div className="flex items-center justify-center gap-1 text-[10px] text-red-600 font-bold mt-1 bg-red-50 px-1.5 py-0.5 rounded w-fit mx-auto">
-                                                                <AlertCircle className="w-3 h-3"/> Terlambat
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="p-4 border-l border-gray-100 col-span-1 text-center">
-                                                        <div className="font-mono text-base font-bold text-gray-600"> 
-                                                          Pukul  {s.checkOut ? format(new Date(s.checkOut), 'HH:mm') : '-'}  WIB
-                                                        </div>
-                                                        <div className="line-clamp-1">
-                                                            {s.checkOutPhoto && (
-                                                                <button
-                                                                    onClick={() => setPreviewImage(s.checkOutPhoto)}
-                                                                    className="mt-2 flex items-center justify-center mx-auto text-green-600 hover:text-green-800"
-                                                                    title="Lihat Foto Check Out"
-                                                                >
-                                                                    <ImageIcon className="w-5 h-5" />
-                                                                </button>
-                                                                )}
-                                                            Jarak : {formatDistance(s.checkOutDistanceM)}</div>
-                                                        <div className="line-clamp">{s.checkOutLocation || '-'}</div>
-                                                    </div>
-                                                    {/* KOLOM KETERANGAN DENGAN TOMBOL EDIT */}
-                                                    <div className="p-4 border-l border-gray-100 col-span-1 text-xs text-gray-500 italic flex justify-between items-center group">
-                                                        {/* <span>{s.isLate ? 'Terlambat' : (s.checkIn ? 'Tepat Waktu' : '-')}</span> */}
-                                                        
-                                                        {/* TOMBOL EDIT HANYA MUNCUL JIKA FILTER PEGAWAI & HARIAN DIPILIH */}
-                                                        {selectedProfileId !== '' && filterType === 'daily' && s.id && (
-                                                          <button 
-                                                            onClick={() => openEditModal(s)}
-                                                            title="Edit/Hapus Absensi ini"
-                                                            className="text-gray-400 hover:text-blue-600 transition p-1 bg-white rounded border border-transparent hover:border-blue-200 shadow-sm"
-                                                          >
-                                                            <Edit className="w-4 h-4" />
-                                                          </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="p-4 text-gray-400 italic text-xs">
-                                            {rec.notes || '-'}
-                                        </div>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                  return record.shifts.map((shift, shiftIdx) => {
+                    const jamCheckIn = shift.checkIn ? new Date(shift.checkIn).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+
+                    return (
+                      <tr key={`${index}-${shiftIdx}`} className="border-b hover:bg-gray-50">
+                        <td className="p-4 align-top font-medium text-gray-800">
+                          {shiftIdx === 0 ? record.profileName : ''}
+                        </td>
+                        <td className="p-4 align-top text-gray-600">
+                          {shiftIdx === 0 ? `${record.dayName}, ${record.dateStr}` : ''}
+                        </td>
+                        
+                        <td className="p-4 align-top">
+                          <span className="block font-medium">{jamCheckIn}</span>
+                          {shift.checkIn ? (
+                            <span className="text-xs text-green-600">sudah terkait</span>
+                          ) : (
+                            <span className="text-xs text-red-500">belum dikaitkan</span>
+                          )}
+                        </td>
+                        
+                        <td className="p-4 align-top text-gray-600">Lhokseumawe</td>
+                        
+                        {/* BAGIAN INI YANG SEBELUMNYA TERHAPUS PEMBUKANYA */}
+                        <td className="p-4 align-top">
+                          {shift.checkInPhoto ? (
+                            <div className="flex flex-row items-start gap-3">
+                              <div 
+                                className="w-12 h-12 md:w-16 md:h-16 border border-gray-300 cursor-pointer overflow-hidden flex-shrink-0 rounded shadow-sm hover:opacity-80"
+                                title="Klik untuk lihat foto"
+                                onClick={() => {
+                                    const photoUrl = !shift.checkInPhoto 
+                                    ? null 
+                                    : shift.checkInPhoto.includes('http') 
+                                    ? shift.checkInPhoto 
+                                    : `${process.env.NEXT_PUBLIC_SUPABASE_URL || ''}/storage/v1/object/public/attendance-photos/${shift.checkInPhoto}`;
+                                    if (photoUrl) setPreviewImage(photoUrl);
+                                }}
+                              >
+                                <img 
+                                  src={
+                                      !shift.checkInPhoto 
+                                      ? "https://placehold.co/150x150/f3f4f6/a1a1aa?text=No+Foto" 
+                                      : shift.checkInPhoto.includes('http') 
+                                      ? shift.checkInPhoto 
+                                      : `${process.env.NEXT_PUBLIC_SUPABASE_URL || ''}/storage/v1/object/public/attendance-photos/${shift.checkInPhoto}`
+                                  } 
+                                  alt="Foto Presensi" 
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                      e.currentTarget.onerror = null;
+                                      e.currentTarget.src = "https://placehold.co/150x150/f3f4f6/a1a1aa?text=No+Foto"; 
+                                  }}
+                                />
+                              </div>
+
+                              <div className="flex-grow">
+                                <p className="text-xs text-gray-700 leading-snug">
+                                  {shift.checkInLocation || 'Detail alamat tidak tersedia.'}
+                                </p>
+                              </div>
+
+                              <div className="flex-shrink-0 ml-2">
+                                <a 
+                                  href={`https://maps.google.com/?q=${encodeURIComponent(shift.checkInLocation || '')}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 text-xs flex items-center gap-1 font-medium hover:underline"
+                                >
+                                  Lihat Di Map
+                                </a>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Data geotagging tidak tersedia</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -835,23 +819,30 @@ export default function DetailAbsensiPegawaiPage() {
         </div>
       )}
 
+      {/* --- MODAL PREVIEW FOTO --- */}
       {previewImage && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
-                <div className="relative">
-                <button
-                    onClick={() => setPreviewImage(null)}
-                    className="absolute -top-3 -right-3 bg-white rounded-full p-1"
-                >
-                    <X className="w-5 h-5" />
-                </button>
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-opacity"
+          onClick={() => setPreviewImage(null)} 
+        >
+          <div className="relative max-w-3xl max-h-screen">
+            <button 
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-4 -right-4 md:-top-6 md:-right-6 bg-white text-gray-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg hover:bg-gray-200 z-10"
+            >
+              ✕
+            </button>
+            
+            <img 
+              src={previewImage} 
+              alt="Preview Foto Presensi" 
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()} 
+            />
+          </div>
+        </div>
+      )}
 
-                <img
-                    src={previewImage}
-                    className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
-                />
-                </div>
-            </div>
-            )}
     </div>
   )
 }
