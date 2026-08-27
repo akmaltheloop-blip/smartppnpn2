@@ -1,7 +1,7 @@
 'use client';
 
 import { Clock, ArrowLeft } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'react-hot-toast';
@@ -35,8 +35,10 @@ export default function CheckInPage() {
   const [shift, setShift] = useState<'pagi' | 'malam'>('pagi');
   const [todayDate, setTodayDate] = useState(new Date().toISOString().split('T')[0]);
   const [todayDateWib, setTodayDateWib] = useState(getTodayWIB());
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [canCheckIn, setCanCheckIn] = useState(true);
 
@@ -135,63 +137,247 @@ export default function CheckInPage() {
     checkAttendance();
   }, [todayDate, shift, userId, todayDateWib]);
 
-  // --- Handler Foto ---
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('File harus berupa gambar.');
+  const openCamera = async () => {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error(
+        'Browser tidak mendukung akses kamera.'
+      );
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 5 MB.');
-      return;
+    // Hentikan stream lama
+    if (videoRef.current?.srcObject) {
+      const oldStream =
+        videoRef.current.srcObject as MediaStream;
+
+      oldStream
+        .getTracks()
+        .forEach((track) => track.stop());
+
+      videoRef.current.srcObject = null;
     }
 
-    setPhotoFile(file);
+    const stream =
+      await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
 
-    if (photoPreview) {
-      URL.revokeObjectURL(photoPreview);
+    setCameraOpen(true);
+
+    setTimeout(async () => {
+      if (!videoRef.current) {
+        stream
+          .getTracks()
+          .forEach((track) => track.stop());
+
+        toast.error(
+          'Preview kamera tidak ditemukan.'
+        );
+
+        return;
+      }
+
+      videoRef.current.srcObject = stream;
+
+      try {
+        await videoRef.current.play();
+      } catch (error) {
+        console.error(
+          'Video play error:',
+          error
+        );
+      }
+    }, 100);
+
+  } catch (error: any) {
+    console.error(
+      'Camera error:',
+      error
+    );
+
+    if (
+      error?.name ===
+      'NotAllowedError'
+    ) {
+      toast.error(
+        'Akses kamera ditolak.'
+      );
+    } else if (
+      error?.name ===
+      'NotFoundError'
+    ) {
+      toast.error(
+        'Kamera tidak ditemukan.'
+      );
+    } else if (
+      error?.name ===
+      'NotReadableError'
+    ) {
+      toast.error(
+        'Kamera sedang digunakan aplikasi lain.'
+      );
+    } else {
+      toast.error(
+        'Kamera tidak dapat dibuka.'
+      );
     }
+  }
+};
 
-    const previewUrl = URL.createObjectURL(file);
-    setPhotoPreview(previewUrl);
-  };
+const capturePhoto = () => {
+  const video = videoRef.current;
+  const canvas = canvasRef.current;
+
+  if (!video || !canvas) {
+    toast.error(
+      'Kamera belum siap.'
+    );
+    return;
+  }
+
+  const width = 540;
+  const height =
+    video.videoHeight > 0
+      ? Math.round(
+          (video.videoHeight /
+            video.videoWidth) *
+            width
+        )
+      : 720;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx =
+    canvas.getContext('2d');
+
+  if (!ctx) return;
+
+  ctx.drawImage(
+    video,
+    0,
+    0,
+    width,
+    height
+  );
+
+  // =========================
+  // WATERMARK
+  // =========================
+
+  ctx.fillStyle =
+    'rgba(0, 0, 0, 0.55)';
+
+  ctx.fillRect(
+    0,
+    height - 125,
+    width,
+    125
+  );
+
+  ctx.fillStyle =
+    '#ffffff';
+
+  ctx.font =
+    'bold 22px Arial';
+
+  ctx.fillText(
+    'SMART PPNPN',
+    15,
+    height - 90
+  );
+
+  ctx.font =
+    '16px Arial';
+
+  ctx.fillText(
+    new Date().toLocaleString(
+      'id-ID'
+    ),
+    15,
+    height - 62
+  );
+
+  if (location) {
+    ctx.fillText(
+      `${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}`,
+      15,
+      height - 38
+    );
+  }
+
+  ctx.fillText(
+    address.substring(0, 45),
+    15,
+    height - 15
+  );
+
+  const image =
+    canvas.toDataURL(
+      'image/jpeg',
+      0.75
+    );
+
+  setPhotoPreview(image);
+
+  // Matikan kamera setelah foto
+  const stream =
+    video.srcObject as MediaStream;
+
+  stream
+    ?.getTracks()
+    .forEach((track) => track.stop());
+
+  video.srcObject = null;
+
+  setCameraOpen(false);
+};
+
+const retakePhoto = () => {
+  setPhotoPreview(null);
+  openCamera();
+};
 
   // --- Fungsi Upload Foto ke Supabase Storage ---
   const uploadAttendancePhoto = async (
-    file: File,
-    uid: string,
-    currentShift: string
-  ) => {
-    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const filePath = `${uid}/${todayDateWib}/${currentShift}-checkin-${Date.now()}.${extension}`;
+  photoData: string,
+  uid: string,
+  currentShift: string
+) => {
+  const response = await fetch(photoData);
+  const blob = await response.blob();
 
-    const { error: uploadError } = await supabase.storage
-      .from('attendance-photos')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: file.type,
-      });
+  const filePath = `${uid}/${todayDateWib}/${currentShift}-checkin-${Date.now()}.jpg`;
 
-    if (uploadError) {
-      throw uploadError;
-    }
+  const { error: uploadError } = await supabase.storage
+    .from('attendance-photos')
+    .upload(filePath, blob, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: 'image/jpeg',
+    });
 
-    const { data: publicUrlData } = supabase.storage
-      .from('attendance-photos')
-      .getPublicUrl(filePath);
+  if (uploadError) {
+    throw uploadError;
+  }
 
-    return publicUrlData.publicUrl;
-  };
+  const { data: publicUrlData } = supabase.storage
+    .from('attendance-photos')
+    .getPublicUrl(filePath);
+
+  return publicUrlData.publicUrl;
+};
 
   // --- HANDLE CHECK-IN UTAMA ---
   const handleCheckIn = async () => {
     if (!location) return toast.error('Lokasi belum terdeteksi.');
-    if (!photoFile) return toast.error('Silakan ambil atau unggah foto absen terlebih dahulu.');
+    if (!photoPreview) {return toast.error('Silakan ambil foto absen terlebih dahulu.'); }
 
     const isValidLocation =
       (distance && distance <= OFFICE_LOCATION.radius_m) &&
@@ -244,7 +430,7 @@ export default function CheckInPage() {
       }
 
       // 1. Upload Foto Terlebih Dahulu
-      const photoUrl = await uploadAttendancePhoto(photoFile, userId, shift);
+      const photoUrl = await uploadAttendancePhoto(photoPreview, userId, shift);
 
       // 2. Insert Data ke Tabel Attendances
       const { data: attendanceData, error: attendanceError } = await supabase
@@ -296,6 +482,19 @@ export default function CheckInPage() {
     }
   };
 
+  useEffect(() => {
+  return () => {
+    if (videoRef.current?.srcObject) {
+      const stream =
+        videoRef.current.srcObject as MediaStream;
+
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
+    }
+  };
+}, []);
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <header className="bg-blue-900 text-white p-4 shadow-lg flex items-center">
@@ -346,24 +545,66 @@ export default function CheckInPage() {
         <div className="bg-white p-4 rounded-xl shadow-md border mb-5">
           <p className="font-semibold text-gray-700 mb-2">Foto Absensi</p>
           <p className="text-sm text-gray-500 mb-3">Silakan ambil foto selfie sebelum melakukan absen masuk.</p>
-          <input
-            type="file"
-            accept="image/*"
-            capture="user"
-            onChange={handlePhotoChange}
-            className="w-full border p-2 rounded-lg text-sm"
-          />
+      
+{!cameraOpen && !photoPreview && (
+  <button
+    type="button"
+    onClick={openCamera}
+    className="w-full bg-green-600 text-white py-3 rounded-lg font-bold"
+  >
+    BUKA KAMERA
+  </button>
+)}
 
-          {photoPreview && (
-            <div className="mt-4">
-              <p className="text-sm font-medium text-gray-600 mb-2">Preview Foto:</p>
-              <img
-                src={photoPreview}
-                alt="Preview foto absensi"
-                className="w-full max-h-80 object-cover rounded-lg border"
-              />
-            </div>
-          )}
+{cameraOpen && (
+  <div className="space-y-3">
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full rounded-lg bg-black"
+      style={{
+        minHeight: '300px',
+        objectFit: 'cover',
+      }}
+    />
+
+    <button
+      type="button"
+      onClick={capturePhoto}
+      className="w-full bg-blue-900 text-white py-3 rounded-lg font-bold"
+    >
+      AMBIL FOTO
+    </button>
+  </div>
+)}
+
+{!cameraOpen && photoPreview && (
+  <div className="mt-4 space-y-3">
+    <p className="text-sm font-medium text-gray-600">
+      Preview Foto:
+    </p>
+
+    <img
+      src={photoPreview}
+      alt="Preview foto absensi"
+      className="w-full max-h-80 object-cover rounded-lg border"
+    />
+
+    <button
+      type="button"
+      onClick={retakePhoto}
+      className="w-full bg-yellow-500 text-white py-3 rounded-lg font-bold"
+    >
+      AMBIL ULANG
+      </button>
+      </div>
+    )}
+    <canvas
+    ref={canvasRef}
+    className="hidden"
+    />
         </div>
 
         <button
