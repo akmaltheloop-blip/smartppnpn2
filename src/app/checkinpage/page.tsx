@@ -1,7 +1,7 @@
 'use client';
 
 import { Clock, ArrowLeft } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'react-hot-toast';
@@ -35,7 +35,10 @@ export default function CheckInPage() {
   const [shift, setShift] = useState<'pagi' | 'malam'>('pagi');
   const [todayDate, setTodayDate] = useState(new Date().toISOString().split('T')[0]);
   const [todayDateWib, setTodayDateWib] = useState(getTodayWIB());
-  
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [canCheckIn, setCanCheckIn] = useState(true);
 
@@ -106,7 +109,6 @@ export default function CheckInPage() {
 
   useEffect(() => { fetchLocation(); }, []);
 
-  // Menambahkan detik agar user bisa memantau waktu dengan tepat
   const formattedTime = currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const formattedDate = currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -133,11 +135,249 @@ export default function CheckInPage() {
       setCanCheckIn(!data);
     };
     checkAttendance();
-  }, [todayDate, shift, userId]);
+  }, [todayDate, shift, userId, todayDateWib]);
 
-  // --- HANDLE CHECK-IN REVISI ---
+  const openCamera = async () => {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error(
+        'Browser tidak mendukung akses kamera.'
+      );
+      return;
+    }
+
+    // Hentikan stream lama
+    if (videoRef.current?.srcObject) {
+      const oldStream =
+        videoRef.current.srcObject as MediaStream;
+
+      oldStream
+        .getTracks()
+        .forEach((track) => track.stop());
+
+      videoRef.current.srcObject = null;
+    }
+
+    const stream =
+      await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+
+    setCameraOpen(true);
+
+    setTimeout(async () => {
+      if (!videoRef.current) {
+        stream
+          .getTracks()
+          .forEach((track) => track.stop());
+
+        toast.error(
+          'Preview kamera tidak ditemukan.'
+        );
+
+        return;
+      }
+
+      videoRef.current.srcObject = stream;
+
+      try {
+        await videoRef.current.play();
+      } catch (error) {
+        console.error(
+          'Video play error:',
+          error
+        );
+      }
+    }, 100);
+
+  } catch (error: any) {
+    console.error(
+      'Camera error:',
+      error
+    );
+
+    if (
+      error?.name ===
+      'NotAllowedError'
+    ) {
+      toast.error(
+        'Akses kamera ditolak.'
+      );
+    } else if (
+      error?.name ===
+      'NotFoundError'
+    ) {
+      toast.error(
+        'Kamera tidak ditemukan.'
+      );
+    } else if (
+      error?.name ===
+      'NotReadableError'
+    ) {
+      toast.error(
+        'Kamera sedang digunakan aplikasi lain.'
+      );
+    } else {
+      toast.error(
+        'Kamera tidak dapat dibuka.'
+      );
+    }
+  }
+};
+
+const capturePhoto = () => {
+  const video = videoRef.current;
+  const canvas = canvasRef.current;
+
+  if (!video || !canvas) {
+    toast.error(
+      'Kamera belum siap.'
+    );
+    return;
+  }
+
+  const width = 540;
+  const height =
+    video.videoHeight > 0
+      ? Math.round(
+          (video.videoHeight /
+            video.videoWidth) *
+            width
+        )
+      : 720;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx =
+    canvas.getContext('2d');
+
+  if (!ctx) return;
+
+  ctx.drawImage(
+    video,
+    0,
+    0,
+    width,
+    height
+  );
+
+  // =========================
+  // WATERMARK
+  // =========================
+
+  ctx.fillStyle =
+    'rgba(0, 0, 0, 0.55)';
+
+  ctx.fillRect(
+    0,
+    height - 125,
+    width,
+    125
+  );
+
+  ctx.fillStyle =
+    '#ffffff';
+
+  ctx.font =
+    'bold 22px Arial';
+
+  ctx.fillText(
+    'SMART PPNPN',
+    15,
+    height - 90
+  );
+
+  ctx.font =
+    '16px Arial';
+
+  ctx.fillText(
+    new Date().toLocaleString(
+      'id-ID'
+    ),
+    15,
+    height - 62
+  );
+
+  if (location) {
+    ctx.fillText(
+      `${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}`,
+      15,
+      height - 38
+    );
+  }
+
+  ctx.fillText(
+    address.substring(0, 45),
+    15,
+    height - 15
+  );
+
+  const image =
+    canvas.toDataURL(
+      'image/jpeg',
+      0.75
+    );
+
+  setPhotoPreview(image);
+
+  // Matikan kamera setelah foto
+  const stream =
+    video.srcObject as MediaStream;
+
+  stream
+    ?.getTracks()
+    .forEach((track) => track.stop());
+
+  video.srcObject = null;
+
+  setCameraOpen(false);
+};
+
+const retakePhoto = () => {
+  setPhotoPreview(null);
+  openCamera();
+};
+
+  // --- Fungsi Upload Foto ke Supabase Storage ---
+  const uploadAttendancePhoto = async (
+  photoData: string,
+  uid: string,
+  currentShift: string
+) => {
+  const response = await fetch(photoData);
+  const blob = await response.blob();
+
+  const filePath = `${uid}/${todayDateWib}/${currentShift}-checkin-${Date.now()}.jpg`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('attendance-photos')
+    .upload(filePath, blob, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: 'image/jpeg',
+    });
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from('attendance-photos')
+    .getPublicUrl(filePath);
+
+  return publicUrlData.publicUrl;
+};
+
+  // --- HANDLE CHECK-IN UTAMA ---
   const handleCheckIn = async () => {
     if (!location) return toast.error('Lokasi belum terdeteksi.');
+    if (!photoPreview) {return toast.error('Silakan ambil foto absen terlebih dahulu.'); }
 
     const isValidLocation =
       (distance && distance <= OFFICE_LOCATION.radius_m) &&
@@ -159,39 +399,40 @@ export default function CheckInPage() {
       const now = new Date();
       let lockTime = '08:00:00'; 
 
-      // Logika Kunci Jam
       if (shift === 'pagi') {
         if (userPos.includes('SATPAM')) {
-          lockTime = '07:05:00'; // Satpam Pagi: 7.00 + 5 mnt
+          lockTime = '07:05:00';
         } else if (userPos.includes('CS')) {
-          lockTime = '07:30:00'; // CS: 6.30 + 1 jam
+          lockTime = '07:30:00';
         } else {
-          lockTime = '08:00:00'; // Umum: 7.00 + 1 jam
+          lockTime = '08:00:00';
         }
       } else {
         if (userPos.includes('SATPAM')) {
-          lockTime = '18:05:00'; // Satpam Malam: 18.00 + 5 mnt
+          lockTime = '18:05:00';
         } else {
-          lockTime = '19:00:00'; // Malam Lainnya: 18.00 + 1 jam
+          lockTime = '19:00:00';
         }
       }
 
       const shiftStart = new Date(todayDateWib + 'T' + lockTime);
       const statusAbsen = now > shiftStart ? 'Terlambat' : 'Hadir';
 
-      // Tambah notifikasi jika terlambat
       const lateMinutes = Math.max(0, Math.floor((now.getTime() - shiftStart.getTime()) / 60000));
-        if (statusAbsen === 'Terlambat') {
-          const confirmLate = window.confirm(
-            `Anda terlambat ${lateMinutes} menit. Tetap lanjutkan?`
-          );
-
-          if (!confirmLate) {
-            setIsSubmitting(false);
-            return;
-          }
+      if (statusAbsen === 'Terlambat') {
+        const confirmLate = window.confirm(
+          `Anda terlambat ${lateMinutes} menit. Tetap lanjutkan?`
+        );
+        if (!confirmLate) {
+          setIsSubmitting(false);
+          return;
         }
+      }
 
+      // 1. Upload Foto Terlebih Dahulu
+      const photoUrl = await uploadAttendancePhoto(photoPreview, userId, shift);
+
+      // 2. Insert Data ke Tabel Attendances
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendances')
         .insert([{
@@ -208,17 +449,19 @@ export default function CheckInPage() {
           check_in_latitude: location.lat,
           check_in_longitude: location.lon,
           check_in_distance_m: distance,
+          check_in_photo: photoUrl, // URL Foto masuk ke database
         }])
         .select('id')
         .single();
 
       if (attendanceError) throw attendanceError;
-// ================= RANDOM VERIFIKASI 5% PER MINGGU =================
-      const startYear = new Date(now.getFullYear(), 0, 1)
-      const days = Math.floor((now.getTime() - startYear.getTime()) / 86400000)
-      const weekNumber = Math.ceil((days + startYear.getDay() + 1) / 7)
-      // 5% sampling mingguan
-      const randomVerify = ((attendanceData.id + weekNumber) % 100) < 5
+
+      // 3. Insert Logbook
+      const startYear = new Date(now.getFullYear(), 0, 1);
+      const days = Math.floor((now.getTime() - startYear.getTime()) / 86400000);
+      const weekNumber = Math.ceil((days + startYear.getDay() + 1) / 7);
+      const randomVerify = ((attendanceData.id + weekNumber) % 100) < 5;
+
       await supabase.from('logbooks').insert([{
         user_id: userId,
         attendance_id: attendanceData.id,
@@ -238,6 +481,19 @@ export default function CheckInPage() {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+  return () => {
+    if (videoRef.current?.srcObject) {
+      const stream =
+        videoRef.current.srcObject as MediaStream;
+
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
+    }
+  };
+}, []);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -284,6 +540,71 @@ export default function CheckInPage() {
           <button onClick={fetchLocation} className="mt-3 bg-blue-900 text-white text-sm py-2 px-3 rounded-lg">
             Ambil Ulang Lokasi
           </button>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl shadow-md border mb-5">
+          <p className="font-semibold text-gray-700 mb-2">Foto Absensi</p>
+          <p className="text-sm text-gray-500 mb-3">Silakan ambil foto selfie sebelum melakukan absen masuk.</p>
+      
+{!cameraOpen && !photoPreview && (
+  <button
+    type="button"
+    onClick={openCamera}
+    className="w-full bg-green-600 text-white py-3 rounded-lg font-bold"
+  >
+    BUKA KAMERA
+  </button>
+)}
+
+{cameraOpen && (
+  <div className="space-y-3">
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full rounded-lg bg-black"
+      style={{
+        minHeight: '300px',
+        objectFit: 'cover',
+      }}
+    />
+
+    <button
+      type="button"
+      onClick={capturePhoto}
+      className="w-full bg-blue-900 text-white py-3 rounded-lg font-bold"
+    >
+      AMBIL FOTO
+    </button>
+  </div>
+)}
+
+{!cameraOpen && photoPreview && (
+  <div className="mt-4 space-y-3">
+    <p className="text-sm font-medium text-gray-600">
+      Preview Foto:
+    </p>
+
+    <img
+      src={photoPreview}
+      alt="Preview foto absensi"
+      className="w-full max-h-80 object-cover rounded-lg border"
+    />
+
+    <button
+      type="button"
+      onClick={retakePhoto}
+      className="w-full bg-yellow-500 text-white py-3 rounded-lg font-bold"
+    >
+      AMBIL ULANG
+      </button>
+      </div>
+    )}
+    <canvas
+    ref={canvasRef}
+    className="hidden"
+    />
         </div>
 
         <button

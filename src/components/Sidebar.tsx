@@ -16,7 +16,8 @@ import {
   BookOpenCheck,
   KeyRound,
   CalendarPlus,
-  ChevronLeft 
+  ChevronLeft,
+  Plane
 } from "lucide-react"; 
 
 export default function Sidebar() {
@@ -167,6 +168,11 @@ export default function Sidebar() {
         <Link href="/detailabsensipegawai" className="flex items-center gap-3 p-3 rounded-lg hover:bg-blue-800/80 transition-colors group">
           <UserSearch size={22} className="min-w-max text-blue-200 group-hover:text-white" />
           <span className={`${!isOpen && "hidden"} text-sm font-medium whitespace-nowrap`}>Detail Absensi Individu</span>
+        </Link>
+
+        <Link href="/rekapperjalanandinasadmin" className="flex items-center gap-3 p-3 rounded-lg hover:bg-blue-800/80 transition-colors group">
+          <Plane size={22} className="min-w-max text-blue-200 group-hover:text-white" />
+          <span className={`${!isOpen && "hidden"} text-sm font-medium whitespace-nowrap`}>Rekap Perjalanan Dinas</span>
         </Link>
 
         <Link href="/logbookpegawaiadmin" className="flex items-center gap-3 p-3 rounded-lg hover:bg-blue-800/80 transition-colors group">
