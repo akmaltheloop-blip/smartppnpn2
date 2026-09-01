@@ -1,19 +1,24 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, MapPin, CheckCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  Camera,
+  MapPin,
+  CheckCircle,
+  History as HistoryIcon,
+  ExternalLink,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 
 type Stage = 'START' | 'CLOCK IN' | 'CLOCK OUT' | 'END';
 
-const STAGES: Stage[] = [
-  'START',
-  'CLOCK IN',
-  'CLOCK OUT',
-  'END',
-];
+const STAGES: Stage[] = ['START', 'CLOCK IN', 'CLOCK OUT', 'END'];
 
 interface TripData {
   start_photo_url?: string;
@@ -48,16 +53,17 @@ const base64ToBlob = (base64Data: string): Blob => {
 
 export default function PerjalananDinasPage() {
   const router = useRouter();
-
   const [userId, setUserId] = useState<string | null>(null);
-
   const [destination, setDestination] = useState('');
   const [purpose, setPurpose] = useState('');
-
   const [currentStage, setCurrentStage] = useState<Stage>('START');
 
   // STATE TRIP UNTUK MENYIMPAN RIWAYAT FOTO & LOKASI
   const [trip, setTrip] = useState<TripData | null>(null);
+
+  // STATE RIWAYAT & DROPDOWN COLLAPSIBLE
+  const [historyList, setHistoryList] = useState<any[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const [location, setLocation] = useState<{
     lat: number;
@@ -65,15 +71,10 @@ export default function PerjalananDinasPage() {
   } | null>(null);
 
   const [address, setAddress] = useState('Mencari lokasi...');
-
   const [photo, setPhoto] = useState<string | null>(null);
-
   const [cameraOpen, setCameraOpen] = useState(false);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [tripId, setTripId] = useState<string | null>(null);
-
   const [previewPhoto, setPreviewPhoto] = useState<{
     title: string;
     url: string;
@@ -84,10 +85,21 @@ export default function PerjalananDinasPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const fetchHistory = async (uid: string) => {
+    const { data, error } = await supabase
+      .from('business_trip_attendances')
+      .select('id, trip_date, destination, purpose, status, created_at')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setHistoryList(data);
+    }
+  };
+
   // =====================================
   // USER LOGIN
   // =====================================
-
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -101,6 +113,7 @@ export default function PerjalananDinasPage() {
       }
 
       setUserId(user.id);
+      fetchHistory(user.id);
     };
 
     getUser();
@@ -109,7 +122,6 @@ export default function PerjalananDinasPage() {
   // =====================================
   // CLEANUP CAMERA
   // =====================================
-
   useEffect(() => {
     return () => {
       if (videoRef.current?.srcObject) {
@@ -125,7 +137,6 @@ export default function PerjalananDinasPage() {
   // =====================================
   // GPS
   // =====================================
-
   const fetchLocation = () => {
     if (!navigator.geolocation) {
       toast.error('Geolocation tidak didukung browser.');
@@ -170,7 +181,6 @@ export default function PerjalananDinasPage() {
   // =====================================
   // CAMERA
   // =====================================
-
   const openCamera = async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -232,7 +242,6 @@ export default function PerjalananDinasPage() {
   // =====================================
   // CAPTURE PHOTO
   // =====================================
-
   const capturePhoto = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -286,7 +295,6 @@ export default function PerjalananDinasPage() {
   // =====================================
   // START PERJALANAN
   // =====================================
-
   const handleStart = async () => {
     if (!userId) {
       return toast.error('User belum ditemukan. Silakan login ulang.');
@@ -377,7 +385,6 @@ export default function PerjalananDinasPage() {
   // =====================================
   // STAGE BERIKUTNYA
   // =====================================
-
   const handleNextStage = async () => {
     if (!tripId) {
       return toast.error('Data perjalanan tidak ditemukan.');
@@ -434,7 +441,6 @@ export default function PerjalananDinasPage() {
           clock_in_at: now,
           clock_in_latitude: location.lat,
           clock_in_longitude: location.lon,
-          clock_in_address: address,
           clock_in_photo_url: photoUrl,
         }));
 
@@ -446,7 +452,6 @@ export default function PerjalananDinasPage() {
             clock_out_at: now,
             clock_out_latitude: location.lat,
             clock_out_longitude: location.lon,
-            clock_in_address: address,
             clock_out_photo_url: photoUrl,
           })
           .eq('id', tripId);
@@ -469,7 +474,6 @@ export default function PerjalananDinasPage() {
             end_at: now,
             end_latitude: location.lat,
             end_longitude: location.lon,
-            clock_in_address: address,
             end_photo_url: photoUrl,
             status: 'completed',
             updated_at: now,
@@ -527,25 +531,125 @@ export default function PerjalananDinasPage() {
       </header>
 
       <main className="p-6 max-w-2xl mx-auto">
+        {/* KARTU RIWAYAT PERJALANAN DINAS (COLLAPSIBLE) */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mb-6">
+          {/* Header Tombol Dropdown */}
+          <button
+            type="button"
+            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+            className="w-full flex items-center justify-between border-b border-gray-100 pb-3 text-left focus:outline-none cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <HistoryIcon className="w-5 h-5 text-blue-600" />
+              <h3 className="text-base font-bold text-gray-800">
+                Riwayat Perjalanan Dinas
+              </h3>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
+                Total: {historyList.length}
+              </span>
+              {isHistoryOpen ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+          </button>
+
+          {/* Isi List Riwayat */}
+          {isHistoryOpen && (
+            <div className="mt-4 space-y-3">
+              {historyList.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  Belum ada riwayat perjalanan.
+                </p>
+              ) : (
+                historyList.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-4 border border-gray-200 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${
+                            item.status === 'completed' ||
+                            item.status === 'SELESAI' ||
+                            item.status === 'Selesai'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
+                          {item.status === 'completed' ||
+                          item.status === 'SELESAI' ||
+                          item.status === 'Selesai'
+                            ? 'Selesai'
+                            : 'Berjalan'}
+                        </span>
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {item.trip_date
+                            ? new Date(item.trip_date).toLocaleDateString(
+                                'id-ID',
+                                {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                }
+                              )
+                            : '-'}
+                        </span>
+                      </div>
+
+                      <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5 mt-1">
+                        <MapPin className="w-4 h-4 text-red-500 shrink-0" />
+                        {item.destination || 'Tujuan tidak diisi'}
+                      </h4>
+
+                      <p className="text-xs text-gray-600 line-clamp-1 pl-5">
+                        {item.purpose || 'Keperluan tidak diisi'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-end shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-100">
+                      <a
+                        href={`/verifikasi/perjalanan-dinas/${item.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+                      >
+                        <ExternalLink size={14} />
+                        Lihat Dokumen
+                      </a>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         {/* INFORMASI PERJALANAN */}
         {currentStage === 'START' && (
           <div className="bg-white p-5 rounded-xl shadow mb-5">
             <h2 className="font-bold text-lg mb-4">Informasi Perjalanan</h2>
 
-            <label className="font-semibold">Tujuan</label>
+            <label className="font-semibold text-sm">Tujuan</label>
             <input
               value={destination}
               onChange={(e) => setDestination(e.target.value)}
               placeholder="Contoh: Banda Aceh"
-              className="w-full border rounded-lg p-3 mt-2 mb-4"
+              className="w-full border border-gray-300 rounded-lg p-3 mt-1 mb-4 text-sm"
             />
 
-            <label className="font-semibold">Keperluan</label>
+            <label className="font-semibold text-sm">Keperluan</label>
             <textarea
               value={purpose}
               onChange={(e) => setPurpose(e.target.value)}
               placeholder="Keperluan perjalanan dinas"
-              className="w-full border rounded-lg p-3 mt-2"
+              className="w-full border border-gray-300 rounded-lg p-3 mt-1 text-sm"
               rows={4}
             />
           </div>
@@ -663,7 +767,9 @@ export default function PerjalananDinasPage() {
                               title: stage,
                               url: stageData.url!,
                               date: stageData.time
-                                ? new Date(stageData.time).toLocaleString('id-ID')
+                                ? new Date(stageData.time).toLocaleString(
+                                    'id-ID'
+                                  )
                                 : undefined,
                               coord:
                                 stageData.lat && stageData.lng
@@ -764,7 +870,7 @@ export default function PerjalananDinasPage() {
 
           <button
             onClick={fetchLocation}
-            className="mt-3 bg-blue-900 text-white px-4 py-2 rounded-lg"
+            className="mt-3 bg-blue-900 text-white px-4 py-2 rounded-lg text-sm"
           >
             Ambil Ulang Lokasi
           </button>
@@ -780,7 +886,7 @@ export default function PerjalananDinasPage() {
           {!photo && !cameraOpen && (
             <button
               onClick={openCamera}
-              className="bg-green-600 text-white px-4 py-3 rounded-lg"
+              className="bg-green-600 text-white px-4 py-3 rounded-lg text-sm"
             >
               Buka Kamera
             </button>
@@ -803,7 +909,7 @@ export default function PerjalananDinasPage() {
               />
               <button
                 onClick={capturePhoto}
-                className="mt-3 bg-blue-900 text-white px-4 py-3 rounded-lg"
+                className="mt-3 bg-blue-900 text-white px-4 py-3 rounded-lg text-sm w-full"
               >
                 Ambil Foto
               </button>
@@ -823,7 +929,7 @@ export default function PerjalananDinasPage() {
                   setPhoto(null);
                   openCamera();
                 }}
-                className="mt-3 bg-yellow-500 text-white px-4 py-2 rounded-lg"
+                className="mt-3 bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm"
               >
                 Ambil Ulang
               </button>
@@ -837,9 +943,9 @@ export default function PerjalananDinasPage() {
         <button
           onClick={handleSubmit}
           disabled={isSubmitting}
-          className={`w-full py-4 rounded-xl text-white font-bold ${
+          className={`w-full py-4 rounded-xl text-white font-bold transition ${
             isSubmitting
-              ? 'bg-gray-400'
+              ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-blue-900 hover:bg-blue-800'
           }`}
         >
