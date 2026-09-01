@@ -34,6 +34,18 @@ interface TripData {
   end_longitude?: number;
 }
 
+// HELPER: Konversi Base64 ke Blob secara langsung & stabil di HP/Vercel
+const base64ToBlob = (base64Data: string): Blob => {
+  const parts = base64Data.split(';base64,');
+  const contentType = parts[0].split(':')[1] || 'image/jpeg';
+  const raw = window.atob(parts[1]);
+  const uInt8Array = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) {
+    uInt8Array[i] = raw.charCodeAt(i);
+  }
+  return new Blob([uInt8Array], { type: contentType });
+};
+
 export default function PerjalananDinasPage() {
   const router = useRouter();
 
@@ -277,7 +289,7 @@ export default function PerjalananDinasPage() {
 
   const handleStart = async () => {
     if (!userId) {
-      return toast.error('User belum ditemukan.');
+      return toast.error('User belum ditemukan. Silakan login ulang.');
     }
 
     if (!destination.trim()) {
@@ -299,18 +311,18 @@ export default function PerjalananDinasPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(photo);
-      const blob = await response.blob();
-      const fileName = `business-trip/${userId}_start_${Date.now()}.jpg`;
+      const blob = base64ToBlob(photo);
+      const fileName = `${userId}_start_${Date.now()}.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from('business-trip-photos')
         .upload(fileName, blob, {
           contentType: 'image/jpeg',
+          upsert: true,
         });
 
       if (uploadError) {
-        throw uploadError;
+        throw new Error(`Upload storage gagal: ${uploadError.message}`);
       }
 
       const { data: publicUrlData } = supabase.storage
@@ -320,7 +332,7 @@ export default function PerjalananDinasPage() {
       const photoUrl = publicUrlData.publicUrl;
       const now = new Date().toISOString();
 
-      const { data, error } = await supabase
+      const { data, error: dbError } = await supabase
         .from('business_trip_attendances')
         .insert({
           user_id: userId,
@@ -336,13 +348,12 @@ export default function PerjalananDinasPage() {
         .select('id')
         .single();
 
-      if (error) {
-        throw error;
+      if (dbError) {
+        throw new Error(`Database error: ${dbError.message}`);
       }
 
       setTripId(data.id);
 
-      // SIMPAN DATA START KE STATE TRIP
       setTrip({
         start_at: now,
         start_latitude: location.lat,
@@ -382,20 +393,19 @@ export default function PerjalananDinasPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(photo);
-      const blob = await response.blob();
-      const fileName = `business-trip/${userId}_${currentStage
-        .toLowerCase()
-        .replace(' ', '_')}_${Date.now()}.jpg`;
+      const blob = base64ToBlob(photo);
+      const stageKey = currentStage.toLowerCase().replace(' ', '_');
+      const fileName = `${userId}_${stageKey}_${Date.now()}.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from('business-trip-photos')
         .upload(fileName, blob, {
           contentType: 'image/jpeg',
+          upsert: true,
         });
 
       if (uploadError) {
-        throw uploadError;
+        throw new Error(`Upload storage gagal: ${uploadError.message}`);
       }
 
       const { data: publicUrlData } = supabase.storage
@@ -406,7 +416,7 @@ export default function PerjalananDinasPage() {
       const now = new Date().toISOString();
 
       if (currentStage === 'CLOCK IN') {
-        await supabase
+        const { error } = await supabase
           .from('business_trip_attendances')
           .update({
             clock_in_at: now,
@@ -415,6 +425,8 @@ export default function PerjalananDinasPage() {
             clock_in_photo_url: photoUrl,
           })
           .eq('id', tripId);
+
+        if (error) throw new Error(error.message);
 
         setTrip((prev) => ({
           ...prev,
@@ -426,7 +438,7 @@ export default function PerjalananDinasPage() {
 
         setCurrentStage('CLOCK OUT');
       } else if (currentStage === 'CLOCK OUT') {
-        await supabase
+        const { error } = await supabase
           .from('business_trip_attendances')
           .update({
             clock_out_at: now,
@@ -435,6 +447,8 @@ export default function PerjalananDinasPage() {
             clock_out_photo_url: photoUrl,
           })
           .eq('id', tripId);
+
+        if (error) throw new Error(error.message);
 
         setTrip((prev) => ({
           ...prev,
@@ -446,7 +460,7 @@ export default function PerjalananDinasPage() {
 
         setCurrentStage('END');
       } else if (currentStage === 'END') {
-        await supabase
+        const { error } = await supabase
           .from('business_trip_attendances')
           .update({
             end_at: now,
@@ -457,6 +471,8 @@ export default function PerjalananDinasPage() {
             updated_at: now,
           })
           .eq('id', tripId);
+
+        if (error) throw new Error(error.message);
 
         setTrip((prev) => ({
           ...prev,
