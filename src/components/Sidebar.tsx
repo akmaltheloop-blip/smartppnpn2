@@ -171,7 +171,7 @@ export default function Sidebar() {
         </Link>
 
         <Link href="/rekapperjalanandinasadmin" className="flex items-center gap-3 p-3 rounded-lg hover:bg-blue-800/80 transition-colors group">
-          <BookOpenCheck size={22} className="min-w-max text-blue-200 group-hover:text-white" />
+          <Plane size={22} className="min-w-max text-blue-200 group-hover:text-white" />
           <span className={`${!isOpen && "hidden"} text-sm font-medium whitespace-nowrap`}>Rekap Perjalanan Dinas</span>
         </Link>
 

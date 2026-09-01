@@ -11,7 +11,9 @@ import {
   Filter,
   RefreshCw,
   MapPin,
-  Clock
+  Clock,
+  Image as ImageIcon,
+  X
 } from 'lucide-react'
 import toast, { Toaster } from 'react-hot-toast'
 import XLSX from 'xlsx-js-style'
@@ -71,6 +73,7 @@ export default function RekapPerjalananDinasAdmin() {
   const [searchName, setSearchName] = useState('')
 
   const [trips, setTrips] = useState<TripRow[]>([])
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   // =========================================================
   // FORMAT WAKTU
@@ -666,6 +669,28 @@ export default function RekapPerjalananDinasAdmin() {
     { locale: idLocale }
   )
 
+  const PhotoButton = ({
+  photoUrl,
+  title,
+  color = 'text-blue-600'
+}: {
+  photoUrl?: string | null
+  title: string
+  color?: string
+}) => {
+  if (!photoUrl) return null
+
+  return (
+    <button
+      onClick={() => setPreviewImage(photoUrl)}
+      className={`mt-1 flex items-center justify-center mx-auto ${color} hover:opacity-70 transition`}
+      title={title}
+    >
+      <ImageIcon className="w-5 h-5" />
+    </button>
+  )
+}
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 font-sans text-xs sm:text-sm">
 
@@ -869,6 +894,10 @@ export default function RekapPerjalananDinasAdmin() {
                   STATUS
                 </th>
 
+                <th className="border border-gray-600 p-2 min-w-[130px]">
+                  AKSI
+                </th>
+
               </tr>
 
             </thead>
@@ -908,26 +937,68 @@ export default function RekapPerjalananDinasAdmin() {
                     </td>
 
                     <td className="border border-gray-300 p-2">
-                      <div className="flex flex-col items-center">
-                        <Clock className="w-3 h-3 text-blue-500 mb-1" />
-
-                        <span>
-                          {formatDateTime(trip.start_at)}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="border border-gray-300 p-2">
-                      {formatDateTime(trip.clock_in_at)}
-                    </td>
-
-                    <td className="border border-gray-300 p-2">
-                      {formatDateTime(trip.clock_out_at)}
-                    </td>
+                        <div className="flex flex-col items-center">
+                            <Clock className="w-3 h-3 text-blue-500 mb-1" />
+                            
+                            <span>
+                                {formatDateTime(trip.start_at)}
+                                </span>
+                                
+                                <PhotoButton
+                                photoUrl={trip.start_photo_url}
+                                title="Lihat Foto Start"
+                                color="text-blue-600"
+                                />
+                                </div>
+                                </td>
 
                     <td className="border border-gray-300 p-2">
-                      {formatDateTime(trip.end_at)}
-                    </td>
+                        <div className="flex flex-col items-center">
+                            <Clock className="w-3 h-3 text-blue-500 mb-1" />
+                            
+                            <span>
+                                {formatDateTime(trip.clock_in_at)}
+                                </span>
+                                
+                                <PhotoButton
+                                photoUrl={trip.clock_in_photo_url}
+                                title="Lihat Foto Clock In"
+                                color="text-blue-600"
+                                />
+                                </div>
+                                </td>
+
+                    <td className="border border-gray-300 p-2">
+                        <div className="flex flex-col items-center">
+                            <Clock className="w-3 h-3 text-green-500 mb-1" />
+                            
+                            <span>
+                                {formatDateTime(trip.clock_out_at)}
+                                </span>
+                                
+                                <PhotoButton
+                                photoUrl={trip.clock_out_photo_url}
+                                title="Lihat Foto Clock Out"
+                                color="text-green-600"
+                                />
+                                </div>
+                                </td>
+
+                    <td className="border border-gray-300 p-2">
+                        <div className="flex flex-col items-center">
+                            <Clock className="w-3 h-3 text-green-500 mb-1" />
+                            
+                            <span>
+                                {formatDateTime(trip.end_at)}
+                                </span>
+                                
+                                <PhotoButton
+                                photoUrl={trip.end_photo_url}
+                                title="Lihat Foto End"
+                                color="text-green-600"
+                                />
+                                </div>
+                                </td>
 
                     <td className="border border-gray-300 p-2">
 
@@ -942,6 +1013,21 @@ export default function RekapPerjalananDinasAdmin() {
                       </span>
 
                     </td>
+
+                    <td className="border border-gray-300 p-2">
+                        <button
+                        onClick={() =>
+                            window.open(
+                                `/verifikasi/perjalanan-dinas/${trip.id}`,
+                                '_blank'
+                            )
+                        }
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition text-xs font-semibold"
+                        title="Lihat Dokumen Validasi"
+                        >
+                            Lihat
+                            </button>
+                            </td>
 
                   </tr>
 
@@ -988,6 +1074,29 @@ export default function RekapPerjalananDinasAdmin() {
         </div>
 
       </div>
+
+      {/* PHOTO PREVIEW MODAL */}
+      {previewImage && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+            <div className="relative">
+                
+                <button
+                onClick={() => setPreviewImage(null)}
+                className="absolute -top-3 -right-3 bg-white rounded-full p-1 shadow-md hover:bg-gray-100"
+                title="Tutup"
+                >
+                    <X className="w-5 h-5 text-gray-700" />
+                    </button>
+                    
+                    <img
+                    src={previewImage}
+                    alt="Preview foto perjalanan dinas"
+                    className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl object-contain"
+                    />
+                    
+            </div>
+        </div>
+        )}
 
     </div>
   )
