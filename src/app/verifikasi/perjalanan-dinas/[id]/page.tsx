@@ -15,21 +15,25 @@ type Trip = {
   start_at: string | null
   start_latitude: number | null
   start_longitude: number | null
+  start_address?: string | null
   start_photo_url: string | null
 
   clock_in_at: string | null
   clock_in_latitude: number | null
   clock_in_longitude: number | null
+  clock_in_address?: string | null
   clock_in_photo_url: string | null
 
   clock_out_at: string | null
   clock_out_latitude: number | null
   clock_out_longitude: number | null
+  clock_out_address?: string | null
   clock_out_photo_url: string | null
 
   end_at: string | null
   end_latitude: number | null
   end_longitude: number | null
+  end_address?: string | null
   end_photo_url: string | null
 
   status: string
@@ -78,18 +82,22 @@ export default function VerifikasiPerjalananDinas() {
             start_at,
             start_latitude,
             start_longitude,
+            start_address,
             start_photo_url,
             clock_in_at,
             clock_in_latitude,
             clock_in_longitude,
+            clock_in_address,
             clock_in_photo_url,
             clock_out_at,
             clock_out_latitude,
             clock_out_longitude,
+            clock_out_address,
             clock_out_photo_url,
             end_at,
             end_latitude,
             end_longitude,
+            end_address,
             end_photo_url,
             status
           `)
@@ -149,7 +157,6 @@ export default function VerifikasiPerjalananDinas() {
     }
   }
 
-  // Fungsi memotong desimal koordinat agar ringkas
   const formatCoord = (lat?: number | null, lng?: number | null) => {
     if (lat === null || lat === undefined || lng === null || lng === undefined) return '-'
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
@@ -192,6 +199,7 @@ export default function VerifikasiPerjalananDinas() {
       dateTime: formatDateTime(trip.start_at),
       lat: trip.start_latitude,
       lng: trip.start_longitude,
+      address: trip.start_address || trip.destination || '-',
       photo: trip.start_photo_url,
     },
     {
@@ -200,6 +208,7 @@ export default function VerifikasiPerjalananDinas() {
       dateTime: formatDateTime(trip.clock_in_at),
       lat: trip.clock_in_latitude,
       lng: trip.clock_in_longitude,
+      address: trip.clock_in_address || trip.destination || '-',
       photo: trip.clock_in_photo_url,
     },
     {
@@ -208,6 +217,7 @@ export default function VerifikasiPerjalananDinas() {
       dateTime: formatDateTime(trip.clock_out_at),
       lat: trip.clock_out_latitude,
       lng: trip.clock_out_longitude,
+      address: trip.clock_out_address || trip.destination || '-',
       photo: trip.clock_out_photo_url,
     },
     {
@@ -216,6 +226,7 @@ export default function VerifikasiPerjalananDinas() {
       dateTime: formatDateTime(trip.end_at),
       lat: trip.end_latitude,
       lng: trip.end_longitude,
+      address: trip.end_address || trip.destination || '-',
       photo: trip.end_photo_url,
     },
   ]
@@ -319,7 +330,7 @@ export default function VerifikasiPerjalananDinas() {
                         <strong>Koordinat:</strong> {formatCoord(item.lat, item.lng)}
                       </p>
                       <p className="text-xs text-gray-600">
-                        <strong>Lokasi:</strong> {trip.destination || '-'}
+                        <strong>Lokasi:</strong> {item.address}
                       </p>
                     </td>
 
@@ -344,7 +355,7 @@ export default function VerifikasiPerjalananDinas() {
                               {formatCoord(item.lat, item.lng)}
                             </p>
                             <p className="text-[8px] text-gray-300 truncate">
-                              {trip.destination || 'Lokasi Presensi'}
+                              {item.address}
                             </p>
                           </div>
                         </div>
