@@ -342,6 +342,7 @@ export default function PerjalananDinasPage() {
           start_at: now,
           start_latitude: location.lat,
           start_longitude: location.lon,
+          start_address: address,
           start_photo_url: photoUrl,
           status: 'ongoing',
         })
@@ -433,6 +434,7 @@ export default function PerjalananDinasPage() {
           clock_in_at: now,
           clock_in_latitude: location.lat,
           clock_in_longitude: location.lon,
+          clock_in_address: address,
           clock_in_photo_url: photoUrl,
         }));
 
@@ -444,6 +446,7 @@ export default function PerjalananDinasPage() {
             clock_out_at: now,
             clock_out_latitude: location.lat,
             clock_out_longitude: location.lon,
+            clock_in_address: address,
             clock_out_photo_url: photoUrl,
           })
           .eq('id', tripId);
@@ -466,6 +469,7 @@ export default function PerjalananDinasPage() {
             end_at: now,
             end_latitude: location.lat,
             end_longitude: location.lon,
+            clock_in_address: address,
             end_photo_url: photoUrl,
             status: 'completed',
             updated_at: now,
